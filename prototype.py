@@ -208,10 +208,10 @@ def macro_reader():
 
 # Checks for pattern matching parts of event log
 def pattern_reader():
-     evtx_file(ps_log_channel,macro_log_file,eventID=4104)
+     evtx_file(ps_log_channel,match_log_file,eventID=4104)
      all_results = []
 
-     with Evtx(macro_log_file) as log:
+     with Evtx(match_log_file) as log:
          for record in log.records():
              
              pattern = record.xml()
