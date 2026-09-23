@@ -14,7 +14,7 @@ ps_log_channel = "Microsoft-Windows-PowerShell/Operational"
 # all the files made
 pr_log_file = "privilege.evtx"  
 pr_output_file =  "privilege.csv"
-pr_name = "privilege Escalation"
+pr_name = "Privilege Escalation"
 
 macro_log_file = "office_macro.evtx"  
 macro_output_file =  "macro_report.csv"
@@ -28,8 +28,8 @@ match_name = "Pattern Matching"
 ms_hour = 60 * 60 * 1000
 
 # Field types
-ma_fieldname = ["Event ID", "Timestamp", "Category" , "Risk Level", "Command"]
-pr_fieldname = ["Event ID", "Timestamp", "Category" , "Risk Level", "Expected Value", "Changed to", "Changed by"]
+ma_fieldname = ["Event ID", "Timestamp (UTC)", "Category" , "Risk Level", "Command"]
+pr_fieldname = ["Event ID", "Timestamp (UTC)", "Category" , "Risk Level", "Expected Value", "Changed to", "Changed by"]
 
 # Privilage Lists and Dictonary
 UAC_rules = [
@@ -171,10 +171,10 @@ def macro_reader():
             if not (parent and image):
                 continue
 
-            parent = os.path.basename(parent.group(1))
-            image= os.path.basename(image.group(1))
+            parent_name = os.path.basename(parent.group(1))
+            image_name = os.path.basename(image.group(1))
 
-            office = parent.upper() in office_app 
+            office = parent_name.upper() in office_app 
             if not office:
                 continue
 
@@ -182,21 +182,21 @@ def macro_reader():
             time = time.group(1) + f" " + time.group(2) if time else "unknown"
             cmd = cmdline.group(1) if cmdline else "No command shown"
 
-            child = image.lower() in risk_image
+            child = image_name.lower() in risk_image
             if child:
                 risk = "High"
-                reason = f"Office app {parent} spwaned {image}"         
+                reason = f"Office app {parent_name} spwaned {image_name}"         
             else:
-                low = image.lower() in risk_low
+                low = image_name.lower() in risk_low
                 if low:
                     continue
                 else:
                     risk = "Medium"
-                    reason = f"Office app {parent} spwaned {image}, not a recognised High risk child process."
+                    reason = f"Office app {parent_name} spwaned {image_name}, not a recognised High risk child process."
 
             result = {
                 "Event ID" : event,
-                "Timestamp" : time,
+                "Timestamp (UTC)" : time,
                 "Category": reason,
                 "Risk Level" : risk,
                 "Command" : cmd,
@@ -236,7 +236,7 @@ def pattern_reader():
 
              result = {
                 "Event ID": event,
-                "Timestamp": time,
+                "Timestamp (UTC)": time,
                 "Category": label,    
                 "Risk Level": risk,
                 "Command": argument,
@@ -294,7 +294,7 @@ def pr_reader():
 
             result = {
                 "Event ID" : event,
-                "Timestamp" : time,
+                "Timestamp (UTC)" : time,
                 "Category" : target, 
                 "Risk Level" : risk,
                 "Expected Value" : safe_value,
