@@ -145,7 +145,6 @@ def check_log_id():
 def main():
 
     all_results = macro_file_reader()
-
     logged_id = check_log_id()
 
     new_result = []
@@ -163,30 +162,22 @@ def main():
 
     macro_csv = os.path.exists(macro_output_file)
 
-    if all_results:
-        with open(macro_output_file, "a", newline="", encoding="utf-8") as csvfile:
-            result_writer = csv.DictWriter(csvfile,
-                            fieldnames = ["Event ID", "Category", "Timestamp", "Risk Level", "Reason", "Command"])
+    
+    with open(macro_output_file, "a", newline="", encoding="utf-8") as csvfile:
+        result_writer = csv.DictWriter(csvfile,
+                        fieldnames = ["Event ID", "Category", "Timestamp", "Risk Level", "Reason", "Command"])
 
-            if not macro_csv:           
-                result_writer.writeheader()
-            result_writer.writerows(all_results)
+        if not macro_csv:           
+            result_writer.writeheader()
+        result_writer.writerows(all_results)
 
-
-        
-        macros_found = WindowsToaster('Macros')
-        text = Toast()
-        text.text_fields = [f"Found {len(all_results)} suspicious macros! Full details in {macro_output_file}"]
-        macros_found.show_toast(text)
 
         
+    macros_found = WindowsToaster('Macros')
+    text = Toast()
+    text.text_fields = [f"Found {len(new_result)} suspicious macros! Full details in {macro_output_file}"]
+    macros_found.show_toast(text)
 
-    else:
-        
-        nothing_found = WindowsToaster('Macros')
-        text = Toast()
-        text.text_fields = ["No suspicious macros found!"]
-        nothing_found.show_toast(text)
 
         
         
