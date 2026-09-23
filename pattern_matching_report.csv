@@ -1,0 +1,2 @@
+Event ID,Label,Timestamp,Risk Level,Score,Full Script Text
+474,['Command was Encoded'],2026-09-21 14:54:56,High,4,"Write-Host ""-enc ixe"""
