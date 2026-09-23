@@ -204,31 +204,23 @@ def main():
         sys.exit(0)
 
 
-
     # if the csv file already exists
     already_csv = os.path.exists(match_output_file)
 
-    if new_result:
-        with open(match_output_file, "a", newline="", encoding="utf-8") as csvfile:
-            result_writer =csv.DictWriter(csvfile,
-                fieldnames=["Event ID", "Label", "Timestamp", "Risk Level","Score","Full Script Text"])
-            # if the file already exists, we want to keep a record of what has happened before
+    
+    with open(match_output_file, "a", newline="", encoding="utf-8") as csvfile:
+        result_writer =csv.DictWriter(csvfile,
+            fieldnames=["Event ID", "Label", "Timestamp", "Risk Level","Score","Full Script Text"])
+        # if the file already exists, we want to keep a record of what has happened before
 
-            if not already_csv:
-                result_writer.writeheader()
-            result_writer.writerows(all_results)
+        if not already_csv:
+            result_writer.writeheader()
+        result_writer.writerows(new_result)
 
-        Some_found = WindowsToaster('Pattern Matching')
-        text = Toast()
-        text.text_fields = [f"Found {len(all_results)} suspicious commands! Full details in {match_output_file}"]
-        Some_found.show_toast(text)
-        
-
-    else:
-        nothing_found = WindowsToaster('Pattern Matching')
-        text = Toast()
-        text.text_fields = ["No suspicious commands found!"]
-        nothing_found.show_toast(text)
+    Some_found = WindowsToaster('Pattern Matching')
+    text = Toast()
+    text.text_fields = [f"Found {len(new_result suspicious commands! Full details in {match_output_file}"]
+    Some_found.show_toast(text)
         
 
 
