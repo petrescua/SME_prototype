@@ -325,8 +325,8 @@ def new_results(result,log,output_file,field_name):
     for r in result:
         if r["Event ID"] not in log:
             new_result.append(r)
-        if len(new_result) == 0:
-            return new_result
+    if len(new_result) == 0:
+        return new_result
     already_csv = os.path.exists(output_file)
 
     with open(output_file, "a", newline="", encoding="utf-8") as csvfile:
