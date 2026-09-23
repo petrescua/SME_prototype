@@ -12,9 +12,9 @@ sys_log_channel = "Microsoft-Windows-Sysmon/Operational"
 ps_log_channel = "Microsoft-Windows-PowerShell/Operational"
 
 # all the files made
-pr_log_file = "privilage.evtx"  
-pr_output_file =  "privilage.csv"
-pr_name = "Privilage Escalation"
+pr_log_file = "privilege.evtx"  
+pr_output_file =  "privilege.csv"
+pr_name = "privilege Escalation"
 
 macro_log_file = "office_macro.evtx"  
 macro_output_file =  "macro_report.csv"
@@ -246,20 +246,20 @@ def pattern_reader():
 
      return all_results
 
-# Checks for any privilage changes
+# Checks for any privilege changes
 def pr_reader():
     evtx_file(sys_log_channel,pr_log_file,eventID=13)
     all_results = []
 
     with Evtx(pr_log_file) as log:
         for record in log.records():
-            privilage = record.xml()
+            privilege = record.xml()
 
-            target = re.search(r'<Data Name="TargetObject">(.*?)</Data>', privilage)
-            details = re.search(r'<Data Name="Details">(.*?)</Data>', privilage)
-            image =  re.search(r'<Data Name="Image">(.*?)</Data>', privilage)    
-            event = re.search(r'<EventRecordID>(.*?)</EventRecordID>', privilage)
-            time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*?"></TimeCreated>', privilage)
+            target = re.search(r'<Data Name="TargetObject">(.*?)</Data>', privilege)
+            details = re.search(r'<Data Name="Details">(.*?)</Data>', privilege)
+            image =  re.search(r'<Data Name="Image">(.*?)</Data>', privilege)    
+            event = re.search(r'<EventRecordID>(.*?)</EventRecordID>', privilege)
+            time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*?"></TimeCreated>', privilege)
            
             if not (target and details):
                 continue
