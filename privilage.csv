@@ -1,0 +1,3 @@
+Event ID,Category,Timestamp,Risk Level,Expected Value,Changed Value,Changed By
+67333,EnableLUA,9/22/2026 12:37,High,1,0,powershell.exe
+69164,EnableLUA,9/23/2026 10:24,High,1,0,powershell.exe
