@@ -29,9 +29,7 @@ match_name = "Command Pattern Matching"
 
 #Start-up files and names
 start_log_file = "start_up.evtx" 
-registry_log_file = "registry.evtx" 
 start_output_file =  "start_up_report.csv"
-registry_name = "Registry Run"
 startup_name = "Start-up Folder"
 
 # Milliseconds 
@@ -105,7 +103,7 @@ RULEBOOK = [
     ]
 
 # Paths for where Run applications could be
-run_registry = [ r"\Run", r"\RunOnce", r"CurrentVersion\Run", r"CurrentVersion\RunOnce"]
+
 run_folder = r"Start Menu\Programs\Startup"
 
 # Baseline for the apps that are run at start-up
@@ -368,99 +366,6 @@ def pr_reader():
 
     return all_results
 
-# Checks the registry folders /Run and /Run once for any new non baseline folders
-def check_registry_run():
-    evtx_file(sys_log_channel,registry_log_file,eventID=13)
-    all_results = []
-     
-    with Evtx(registry_log_file) as log:
-        for record in log.records():
-            
-            start = record.xml()
-            lnk = re.search(r'<Data Name="TargetObject">(.*?)</Data>', start)
-            details = re.search(r'<Data Name="Details">(.*?)</Data>', start)
-            event = re.search(r'<EventRecordID>(.*?)</EventRecordID>', start)
-            time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*?"></TimeCreated>', start)
-            if not lnk:
-                continue
-
-            lnk = lnk.group(1)
-            details = details.group(1)
-            if not any( l in lnk for l in run_registry):
-                continue
-            if any( l in lnk for l in known_baseline):
-                continue
-            
-            time = time.group(1) + f" " + time.group(2) if time else "unknown"
-            event = event.group(1) if event else "unknown"
-
-            score = 0
-            reason = []
-
-            # Other non paths non commands are kept in /Run such as DWORD, but they are not a path so
-            # Have to check that it is a path
-            if not re.search(r'\.(exe|dll|bat|cmd|com)\b(.*)', lnk, re.IGNORECASE):
-                continue
-
-            try:
-                path, argument = details.split('" -')
-                label, arg_score = check_rulebook(argument)
-                reason.append(label)
-                score += arg_score
-                path_command = "Path followed by command"
-            except ValueError:
-                path = details
-
-            if any( p in path for p in known_baseline):
-                continue
-
-            location_result = location(path.strip('"'))
-            if location_result == "suspicious":
-                reason.append("Target in Temp/AppData/Downloads")
-                score += 4
-            elif location_result == "unrecognised":
-                reason.append("Not recognised as standard install path")
-                score += 2
-            else:
-                sig_status = check_signature(path)
-                result = {
-                    "Event ID": event,
-                    "Timestamp (UTC)": time,
-                    "Source" : "Registry Run",
-                    "Risk Level": "Low",
-                    "Target": path,
-                    "Type": path_command,
-                    "Reason": "New safe star-up detected, please add it to baseline",
-                    "Signature Status": sig_status,
-                }
-                all_results.append(result)
-                continue
-
-            sig_status = check_signature(path)
-            if sig_status != "Valid":
-                score += 2
-
-            if score >= 4:
-                risk = "High"
-            else:
-                risk = "Medium"
-       
-
-            result = {
-                "Event ID": event,
-                "Timestamp (UTC)": time,
-                "Source" : "Registry Run",
-                "Risk Level": risk,
-                "Target": path,
-                "Type": path_command,
-                "Reason": ", ".join(reason),
-                "Signature Status": sig_status,
-            }
-
-            all_results.append(result)
-
-    return all_results
-
 # Checks for any new files in the start up folders
 def check_start_folder():
 
@@ -607,11 +512,6 @@ def main():
     pr_log = check_log_id(pr_output_file)
     new_pr = new_results(pr_result,pr_log,pr_output_file,pr_fieldname) 
 
-    # Registry start up check
-    registry_result = check_registry_run()
-    registry_log = check_log_id(start_output_file)
-    new_registry = new_results(registry_result,registry_log,start_output_file,start_filedname)
-
     # Start up folder check
     start_result = check_start_folder()
     start_log = check_log_id(start_output_file)
@@ -630,10 +530,7 @@ def main():
              {"New": len(new_pr),
               "Name":  pr_name,
               "Location": pr_output_file},
-            {"New": len(new_registry),
-             "Name": registry_name,
-             "Location": start_output_file},
-        
+            
             {"New": len(new_start),
              "Name":  startup_name,
              "Location":  start_output_file},
