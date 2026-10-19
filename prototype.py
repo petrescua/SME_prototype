@@ -1,4 +1,4 @@
-import ctypes
+import ctypes # To ensure admin
 import csv # creating csv file for RISK
 from Evtx.Evtx import Evtx # allows us to read the evtx files to check them
 import os # used to check if the output file already exists
@@ -6,12 +6,14 @@ import re # regular expression for pattern matching
 import subprocess # used to run commands in the terminal so user does not have to run them manually
 import sys # used to exit the program if there is an error
 from windows_toasts import Toast, WindowsToaster # For notification purposes
-import win32com.client
-# Event log path
+import win32com.client # Checking path for shortcut
+
+# Event log path in Event Viewer
 sys_log_channel = "Microsoft-Windows-Sysmon/Operational"
 ps_log_channel = "Microsoft-Windows-PowerShell/Operational"
 
-# all the files made
+# All the files made:
+
 # Privillage change files and name
 pr_log_file = "privilege.evtx"  
 pr_output_file =  "privilege_report.csv"
@@ -32,13 +34,14 @@ start_log_file = "start_up.evtx"
 start_output_file =  "start_up_report.csv"
 startup_name = "Start-up Folder"
 
-# Milliseconds 
+# Milliseconds converter
 ms_hour = 60 * 60 * 1000
 
-# Field types
+# Fieldnames for all the csv files
 ma_fieldname = ["Event ID", "Timestamp (UTC)", "Category" , "Risk Level", "Command"]
+macro_fieldname = ["Event ID", "Timestamp (UTC)", "Category" , "Risk Level", "Command","Command Risk", "From Document"]
 pr_fieldname = ["Event ID", "Timestamp (UTC)", "Category" , "Risk Level", "Expected Value", "Changed to", "Changed by"]
-start_filedname = ["Event ID", "Timestamp (UTC)", "Category", "Risk Level", "Target", "Type", "Reason", "Signature Status"]
+start_filedname = ["Event ID", "Timestamp (UTC)", "Category","Path", "Risk Level", "Target", "Type", "Reason", "Signature Status"]
 
 # Privilage Lists and Dictonary
 UAC_rules = [
@@ -57,6 +60,7 @@ UAC_rules = [
 # Macros Lists and Dictonary
 office_app = ["WINWORD.EXE", "EXCEL.EXE", "POWERPNT.EXE"]
 
+# Potential applications can can be used for suspicious activity
 risk_image = [
     "powershell.exe", "cmd.exe", "sc.exe", "misexec.exe",
     "wmic.exe", "wscript.exe", "rundll32.exe", "reg.exe",
@@ -64,6 +68,7 @@ risk_image = [
     "mshta.exe", "cscript.exe",  "certutil.exe" 
     ]
 
+# Applications that office documents may open that are safe
 risk_low = ["ai.exe", "aimgr.exe","splwow64.exe"]
 
 # Pattern Dictonary also used for start-up
@@ -73,11 +78,11 @@ RULEBOOK = [
      "score": 4},
     # One way attckers can encode is using -enc  
     {"label": "Command was Encoded",
-     "pattern": r"--encryption",
+     "pattern": r"-encryption",
      "score": 4},
     # Encryptions like the one before
     {"label": "Command downloaded Content from the web",
-     "pattern": r"Invoke-WebRequest|wget|curl",
+     "pattern": r"Invoke-WebRequest|wget|curl|Download(String|File|Data)",
      "score": 3},
     # Downloaded content from commands, not normally done by SMEs without CS knowledge
     {"label": "Command executed text as script",
@@ -85,40 +90,43 @@ RULEBOOK = [
      "score": 3},
     # Texts is made into script
     {"label": "Powershell Window is Hidden",
-     "pattern": r"-WindowStyle\s+Hidden",
+     "pattern": r"-WindowStyle\s+Hidden|-w\s+hidden",
      "score": 2},
     # Powershell window is hidden, attackers can avoid detection
     {"label": "Base64 Encoded Command",
-     "pattern": r"FromBase64String",
+     "pattern": r"FromBase64String|Base64",
      "score": 4},
     # Base64 can be used for encoding
-    {"label": "Mimitakz installed on system",
+    {"label": "Mimikatz installed on system",
      "pattern": r"mimikatz",
      "score": 4},
     # Mimikats is a tool used for credential dumping
     {"label": "Shadow Copies Deleted",
-     "pattern": r"shadow(copy)",
+     "pattern": r"shadow(copy)|delete\s+shadows",
      "score": 4},
     # shadowcopy in command
     ]
 
 # Paths for where Run applications could be
-
 run_folder = r"Start Menu\Programs\Startup"
 
 # Baseline for the apps that are run at start-up
 known_baseline = [
-    r"C:\Program Files\Microsoft OneDrive"
-    r"C:\Program Files (x86)\Microsoft" 
+    r"C:\Program Files\Microsoft OneDrive",
+    r"C:\Program Files (x86)\Microsoft",
+    r'Startup\~ew shortcut.tmp',
+    r'\Startup\New shortcut.lnk',
+    r'\Startup\New shortcut.lnk~RFf141b8.TMP'
+
 ]
 
 # Paths where safe apps are, as they require admin to be installed there
 legitimate_path = [r"\Program Files", r"Program Files (x86)", r"Windows\System32"]
 
-# paths where mallicious applications could be stored in
-suspicious_path = [r"\Temp", r"\AppData\Local\Temp", r"\Downloads"]
+# Paths where mallicious applications could be stored in
+suspicious_path = [r"\Temp", r"\AppData\Local\Temp", r"\Downloads", r"\Desktop"]
 
-# Runs code as admin for sysmon
+# Runs code as admin for Sysmon
 def ensure_admin():
     try:
         is_admin = ctypes.windll.shell32.IsUserAnAdmin()
@@ -148,7 +156,7 @@ def location(path):
             return "safe"
     return "unrecognised"
 
-# Checks if a particualr path is signed by a cetified authority
+# Checks if a file has been signed for and returns what the status of the signature is
 def check_signature(path):
     text = (f"(Get-AuthenticodeSignature -LiteralPath '{path}').Status")
     command = [
@@ -160,14 +168,17 @@ def check_signature(path):
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=10)
         status = result.stdout.strip()
-        return status 
+        if status == "UnknownError"  or status == "":
+            return f"Unknown, likely unable to validate. Input was: {path}"
+        else:
+            return status
+    
     except Exception:
-        return "Could not check"
+        return "Unable to check signature status"
 
 # Checks where a shortcut links to
 def shortcut_path(path):
-    # This is a live test, therefore the file may have been deleted before the test was done
-    # this returns none.
+    # This is a live test, therefore the file may have been deleted before the test was done, if so, returns none
     if os.path.exists(path) == False:
         return None
     try:    
@@ -177,7 +188,7 @@ def shortcut_path(path):
     except Exception:
         return None
 
-# make the hex into a number
+# Hex into a base10
 def hex_int(detail):
     # matches the hex
     match = re.search(r'0x([0-9A-Fa-f]+)', detail)
@@ -190,7 +201,6 @@ def hex_int(detail):
 def evtx_file(log_channel,log_file,hours=24,eventID=None):
 
     # query takes milisecond argument, default makes 24 hours
-    
     milisecond = hours * ms_hour
 
     query = f"*[System[(EventID={eventID}) and TimeCreated[timediff(@SystemTime) <= {milisecond}]]]"
@@ -215,6 +225,10 @@ def evtx_file(log_channel,log_file,hours=24,eventID=None):
         print("Error: File not found.")
         sys.exit(1)
 
+    except Exception as error:
+        print(f"Unexpected error:{error}")
+        sys.exit(1)
+
 # Checks for macro parts of the event log
 def macro_reader():
     evtx_file(sys_log_channel, macro_log_file,eventID=1)
@@ -224,37 +238,54 @@ def macro_reader():
         for record in log.records():
             macro = record.xml()
 
-            parent = re.search(r'<Data Name="ParentImage">(.*?)</Data>', macro)          
+            parent = re.search(r'<Data Name="ParentImage">(.*?)</Data>', macro)
+            document = re.search(r'<Data Name="ParentCommandLine">"([^"]+)" /n "([^"<]+)"?(.*?)/Data>', macro)       
             image = re.search(r'<Data Name="Image">(.*?)</Data>', macro)
             cmdline = re.search(r'<Data Name="CommandLine">(.*?)</Data>', macro)
             event = re.search(r'<EventRecordID>(.*?)</EventRecordID>', macro)
-            time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*?"></TimeCreated>', macro)
+            time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*?>', macro)
 
             if not (parent and image):
                 continue
 
+
             parent_name = os.path.basename(parent.group(1))
-            image_name = os.path.basename(image.group(1))
+            image_name = os.path.basename(image.group(1)) 
+            document = os.path.basename(document.group(2)) if document else "Unknown"
 
             office = parent_name.upper() in office_app 
             if not office:
                 continue
 
-            event = event.group(1) if event else "unknown"
-            time = time.group(1) + f" " + time.group(2) if time else "unknown"
-            cmd = cmdline.group(1) if cmdline else "No command shown"
+            try:
+                event = int(event.group(1))
+                event = str(event)
+            except ValueError:
+                event = "Unknown"
+
+            time = time.group(1) + f" " + time.group(2) if time else "Unknown"
+
+            if cmdline.group(1) == None:
+                cmd = "No command shown"
+            else:
+                cmd = cmdline.group(1) 
+                label, score = check_rulebook(cmd)
+                if not label:
+                    label = "Nothing suspicious in command"
+                if score >= 4:
+                    risk = "High"
+                else:
+                    risk = "Medium"
 
             child = image_name.lower() in risk_image
             if child:
-                risk = "High"
-                reason = f"Office app {parent_name} spwaned {image_name}"         
+                reason = f"Office app {parent_name} ran {image_name}"         
             else:
                 low = image_name.lower() in risk_low
                 if low:
                     continue
                 else:
-                    risk = "Medium"
-                    reason = f"Office app {parent_name} spwaned {image_name}, not a recognised High risk child process."
+                    reason = f"Office app {parent_name} ran {image_name}, not a recognised High risk child process."
 
             result = {
                 "Event ID" : event,
@@ -262,6 +293,8 @@ def macro_reader():
                 "Category": reason,
                 "Risk Level" : risk,
                 "Command" : cmd,
+                "Command Risk":" ; ".join(label) if len(label) == 1 else label,
+                "From Document" : document,
             }
 
             all_results.append(result)
@@ -277,14 +310,20 @@ def pattern_reader():
          for record in log.records():
              
              pattern = record.xml()
-             argument = re.search(r'<Data Name="ScriptBlockText">(.*?)</Data>', pattern)
+             argument = re.search(r'<Data Name="ScriptBlockText">(.*?)</Data>', pattern, re.DOTALL)
              event = re.search(r'<EventRecordID>(.*?)</EventRecordID>', pattern)
-             time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*?"></TimeCreated>', pattern)
+             time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*>', pattern)
 
              if not argument:
                  continue                     
              argument = argument.group(1) 
-             event = event.group(1) if event else "unknown"
+
+             try:
+                event = int(event.group(1))
+                event = str(event)
+             except ValueError:
+                 event = "unknown"
+
              time = time.group(1) + f" " + time.group(2) if time else "unknown"
 
              label, score = check_rulebook(argument)
@@ -299,7 +338,7 @@ def pattern_reader():
              result = {
                 "Event ID": event,
                 "Timestamp (UTC)": time,
-                "Category": label,    
+                "Category": " ; ".join(label),    
                 "Risk Level": risk,
                 "Command": argument,
                 }
@@ -308,7 +347,7 @@ def pattern_reader():
 
      return all_results
 
-# Checks for any privilege changes
+# Checks for any UAC changes
 def pr_reader():
     evtx_file(sys_log_channel,pr_log_file,eventID=13)
     all_results = []
@@ -321,7 +360,7 @@ def pr_reader():
             details = re.search(r'<Data Name="Details">(.*?)</Data>', privilege)
             image =  re.search(r'<Data Name="Image">(.*?)</Data>', privilege)    
             event = re.search(r'<EventRecordID>(.*?)</EventRecordID>', privilege)
-            time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*?"></TimeCreated>', privilege)
+            time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*>', privilege)
            
             if not (target and details):
                 continue
@@ -345,7 +384,11 @@ def pr_reader():
 
             image = os.path.basename(image.group(1)) if image else "unknown"    
             time = time.group(1) + f" " + time.group(2) if time else "unknown"
-            event = event.group(1) if event else "unknown"
+            try:
+                event = int(event.group(1))
+                event = str(event)
+            except ValueError:
+                event = "unknown"
 
             if image in risk_image:
                 risk = "High"
@@ -367,7 +410,7 @@ def pr_reader():
     return all_results
 
 # Checks for any new files in the start up folders
-def check_start_folder():
+def startup_reader():
 
     evtx_file(sys_log_channel,start_log_file,eventID=11)
 
@@ -379,24 +422,23 @@ def check_start_folder():
             start = record.xml()
 
             event = re.search(r'<EventRecordID>(.*?)</EventRecordID>', start)
-            time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*?"></TimeCreated>', start)
+            time = re.search(r'<TimeCreated SystemTime="(.*?) (.*?)\..*>', start)
             file= re.search(r'<Data Name="TargetFilename">(.*?)</Data>', start)
 
             if not file:
                 continue
 
-
             file = file.group(1)
-            # the code will also check temp files that would be created and show them too, 
-            # however these temp files are part of creating shortcuts and therefore not needed
-            if "tmp" in file.lower() or "new" in file.lower():
-                continue
 
             if run_folder not in file:
                 continue
 
             datetime = time.group(1) + f" " + time.group(2) if time else "unknown"
-            event = event.group(1) if event else "unknown"
+            try:
+                event = int(event.group(1))
+                event = str(event)
+            except ValueError:
+                event = "unknown"
 
             reason = []
             score = 0
@@ -427,6 +469,10 @@ def check_start_folder():
                     sig_status = "N/A not found"
 
                 else:
+                    base = os.path.basename(target) in risk_image
+                    if base: 
+                        score += 4
+                        reason.append("Suspicious base image in Startup Shortcut")
                     sig_status = check_signature(target)
                     if sig_status != "Valid":
                         score += 2
@@ -438,7 +484,7 @@ def check_start_folder():
                         reason.append(f"Shortcut points to untested location: {target}")
                         score += 1
                     elif location_result == "safe":
-                        reason.append("Shortcut is safe, please add to baseline.")
+                        reason.append("Shortcut may safe, please add to baseline if recognise.")
        
             if score >= 4:
                 risk = "High"
@@ -448,11 +494,12 @@ def check_start_folder():
             result = {
                 "Event ID": event,
                 "Timestamp (UTC)": datetime,
-                "Source" : "Startup Folder",
+                "Category" : "Startup Folder",
+                "Path": file,
                 "Risk Level": risk,
                 "Target": target,
                 "Type": shortcut_file,
-                "Reason": ", ".join(reason),
+                "Reason": "; ".join(reason),
                 "Signature Status": sig_status,
             }
 
@@ -461,7 +508,7 @@ def check_start_folder():
   
     return all_results
 
-# Checks if the event ID already there, so not writing twice
+# Checks if the event ID already in csv file, to not write it twice
 def check_log_id(output_file):
     already_logged = set()
 
@@ -495,12 +542,13 @@ def new_results(result,log,output_file,field_name):
 
     return new_result
 
+# Main
 def main():
     print("Checking for new suspicious activity, this may take a while.")
     #Malicious Macro Spawning output
     macro_result = macro_reader()
     macro_log = check_log_id(macro_output_file)
-    new_macro = new_results(macro_result,macro_log,macro_output_file,ma_fieldname)
+    new_macro = new_results(macro_result,macro_log,macro_output_file,macro_fieldname)
 
     #Pattern Matching output
     match_result = pattern_reader()
@@ -513,11 +561,11 @@ def main():
     new_pr = new_results(pr_result,pr_log,pr_output_file,pr_fieldname) 
 
     # Start up folder check
-    start_result = check_start_folder()
+    start_result = startup_reader()
     start_log = check_log_id(start_output_file)
     new_start = new_results(start_result,start_log,start_output_file,start_filedname)
 
-
+    # Dictionary to form the notification pop-up.
     alerts = [
             {"New": len(new_macro),
              "Name":  macro_name,
